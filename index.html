@@ -69,6 +69,12 @@
       gap: 10px;
     }
 
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
     .field {
       display: flex;
       flex-direction: column;
@@ -95,6 +101,20 @@
       font-size: 14px;
       outline: none;
       transition: border-color 0.2s;
+    }
+
+    input[type="number"] {
+      text-align: center;
+    }
+
+    /* Ok işaretlerini kaldır */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
     }
 
     input:focus, select:focus {
@@ -252,9 +272,14 @@
         <select id="dusmanBirim"></select>
       </div>
 
+      <!-- Saat, Dakika, Saniye Girişi -->
       <div class="field">
-        <label>Saldırının Vurma / Çarpma Saati</label>
-        <input type="datetime-local" id="savasZamani" step="1">
+        <label>Saldırının Vurma / Çarpma Saati (SS : DD : SN)</label>
+        <div class="grid-3">
+          <input type="number" id="savasSaat" placeholder="Saat" min="0" max="23" inputmode="numeric">
+          <input type="number" id="savasDakika" placeholder="Dakika" min="0" max="59" inputmode="numeric">
+          <input type="number" id="savasSaniye" placeholder="Saniye" min="0" max="59" inputmode="numeric">
+        </div>
       </div>
 
       <div class="field">
@@ -406,22 +431,22 @@
       return h > 0 ? `${h} sa ${m} dk ${s} sn` : `${m} dk ${s} sn`;
     }
 
-    function formatTarihSaat(d) {
-      const gun = String(d.getDate()).padStart(2, '0');
-      const ay = String(d.getMonth() + 1).padStart(2, '0');
-      const saat = String(d.getHours()).padStart(2, '0');
-      const dakika = String(d.getMinutes()).padStart(2, '0');
-      const saniye = String(d.getSeconds()).padStart(2, '0');
-      return `${saat}:${dakika}:${saniye} (${gun}.${ay})`;
+    function formatSaat(d) {
+      const s = String(d.getHours()).padStart(2, '0');
+      const dkk = String(d.getMinutes()).padStart(2, '0');
+      const sn = String(d.getSeconds()).padStart(2, '0');
+      return `${s}:${dkk}:${sn}`;
     }
 
     window.addEventListener("DOMContentLoaded", () => {
       birimDoldur("dusmanBirim", "HUN");
       birimDoldur("kendiBirim", "HUN");
       
+      // Sayfa açıldığında anlık saati hazır doldur
       const now = new Date();
-      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-      document.getElementById("savasZamani").value = now.toISOString().slice(0, 19);
+      document.getElementById("savasSaat").value = String(now.getHours()).padStart(2, '0');
+      document.getElementById("savasDakika").value = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById("savasSaniye").value = String(now.getSeconds()).padStart(2, '0');
     });
 
     function kilitHesapla() {
@@ -431,16 +456,27 @@
       const sy = parseFloat(document.getElementById("sy").value);
       const kx = parseFloat(document.getElementById("kx").value);
       const ky = parseFloat(document.getElementById("ky").value);
-      const savasStr = document.getElementById("savasZamani").value;
 
-      if (isNaN(dx) || isNaN(dy) || isNaN(sx) || isNaN(sy) || isNaN(kx) || isNaN(ky) || !savasStr) {
-        alert("Lütfen tüm koordinatları ve savaş saatini eksiksiz doldurun.");
+      const h = parseInt(document.getElementById("savasSaat").value, 10);
+      const m = parseInt(document.getElementById("savasDakika").value, 10);
+      const s = parseInt(document.getElementById("savasSaniye").value, 10);
+
+      if (isNaN(dx) || isNaN(dy) || isNaN(sx) || isNaN(sy) || isNaN(kx) || isNaN(ky)) {
+        alert("Lütfen tüm koordinatları eksiksiz girin.");
+        return;
+      }
+
+      if (isNaN(h) || isNaN(m) || isNaN(s) || h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) {
+        alert("Lütfen geçerli bir saat (0-23), dakika (0-59) ve saniye (0-59) girin.");
         return;
       }
 
       const dHiz = parseFloat(document.getElementById("dusmanBirim").value);
       const kHiz = parseFloat(document.getElementById("kendiBirim").value);
-      const savasDate = new Date(savasStr);
+
+      // Hedef saati bugüne göre kur
+      const savasDate = new Date();
+      savasDate.setHours(h, m, s, 0);
 
       // 1. Düşman dönüş süresi
       let dusmanSure = sureHesapla(dx, dy, sx, sy, dHiz).toplamSaniye;
@@ -452,7 +488,7 @@
       if (kendiTarz === "elmas") kendiSure = Math.floor(kendiSure / 2);
       const cikisDate = new Date(varisDate.getTime() - kendiSure * 1000);
 
-      // Zaman aşımı kontrolü (Şu anki zamandan geride mi?)
+      // Geç kalındı mı kontrolü
       const suAn = new Date();
       const gecKalindi = cikisDate.getTime() < suAn.getTime();
 
@@ -473,9 +509,9 @@
         cardHeaderTitle.style.color = "var(--success-color)";
       }
 
-      document.getElementById("resDonus").textContent = formatTarihSaat(varisDate);
+      document.getElementById("resDonus").textContent = formatSaat(varisDate);
       document.getElementById("resSure").textContent = formatSure(kendiSure);
-      resCikisEl.textContent = formatTarihSaat(cikisDate);
+      resCikisEl.textContent = formatSaat(cikisDate);
       
       const kSelect = document.getElementById("kendiBirim");
       const secilenBirimAdi = kSelect.options[kSelect.selectedIndex].text;
@@ -484,8 +520,8 @@
                     `🎯 Hedef: X: ${dx} | Y: ${dy}\n` +
                     `📍 Çıkış: X: ${kx} | Y: ${ky}\n` +
                     `💂 Birim: ${secilenBirimAdi}\n` +
-                    `🕒 İniş / Kilit Saati: ${formatTarihSaat(varisDate)}\n` +
-                    `🚀 Asker Çıkış Saati: ${formatTarihSaat(cikisDate)}` +
+                    `🕒 İniş / Kilit Saati: ${formatSaat(varisDate)}\n` +
+                    `🚀 Asker Çıkış Saati: ${formatSaat(cikisDate)}` +
                     (gecKalindi ? `\n⚠️ DİKKAT: Çıkış zamanı geçmiştir!` : ``);
 
       card.style.display = "block";
