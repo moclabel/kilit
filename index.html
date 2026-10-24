@@ -17,6 +17,7 @@
       --text-muted: #9ca3af;
       --border-color: #2e3646;
       --success-color: #10b981;
+      --danger-color: #ef4444;
     }
 
     * {
@@ -100,7 +101,6 @@
       border-color: var(--accent-color);
     }
 
-    /* Sekme / Seçim Butonları */
     .tab-group {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -127,7 +127,6 @@
       color: var(--accent-color);
     }
 
-    /* Birim Grid */
     .race-select {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -154,16 +153,21 @@
       opacity: 0.9;
     }
 
-    /* Sonuç Kartı */
     #sonucCard {
       display: none;
       border-color: var(--success-color);
       background-color: #111e1b;
     }
 
+    #sonucCard.late {
+      border-color: var(--danger-color);
+      background-color: #1e1111;
+    }
+
     .result-row {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       padding: 6px 0;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       font-size: 13px;
@@ -183,6 +187,23 @@
       color: #34d399;
       font-weight: 800;
       letter-spacing: 0.5px;
+    }
+
+    .highlight-time.late {
+      color: #f87171;
+    }
+
+    .warning-badge {
+      display: none;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid var(--danger-color);
+      color: #fca5a5;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 10px;
+      text-align: center;
     }
 
     .copy-btn {
@@ -280,7 +301,8 @@
 
     <!-- Sonuç Kartı -->
     <div class="card" id="sonucCard">
-      <div class="card-title" style="color: #34d399;">⚔️ Kilit Operasyon Planı</div>
+      <div class="card-title" id="cardHeaderTitle" style="color: #34d399;">⚔️ Kilit Operasyon Planı</div>
+      
       <div class="result-row">
         <span>Düşmanın Dönüş Saati:</span>
         <span class="result-val" id="resDonus">-</span>
@@ -293,19 +315,20 @@
         <span style="font-weight:700;">🚀 ASKER ÇIKIŞ SAATİN:</span>
         <span class="highlight-time" id="resCikis">-</span>
       </div>
+
+      <div id="warningBadge" class="warning-badge">⚠️ DİKKAT: Çıkış saati geçmişte kaldı! Bu birimle kilide yetişilemez.</div>
+
       <button class="copy-btn" onclick="kopyalaFis()">📋 Operasyon Fişini Kopyala</button>
     </div>
   </div>
 
   <script>
-    // Telegram Mini App Entegrasyonu
     const tg = window.Telegram ? window.Telegram.WebApp : null;
     if (tg) {
       tg.expand();
       tg.ready();
     }
 
-    // Birim Hızları Veritabanı
     const BIRIMLER = {
       HUN: [
         { name: "Toygun", speed: 125 }, { name: "Kemankeş", speed: 145 },
@@ -383,11 +406,15 @@
       return h > 0 ? `${h} sa ${m} dk ${s} sn` : `${m} dk ${s} sn`;
     }
 
-    function formatSaat(d) {
-      return d.toTimeString().split(" ")[0];
+    function formatTarihSaat(d) {
+      const gun = String(d.getDate()).padStart(2, '0');
+      const ay = String(d.getMonth() + 1).padStart(2, '0');
+      const saat = String(d.getHours()).padStart(2, '0');
+      const dakika = String(d.getMinutes()).padStart(2, '0');
+      const saniye = String(d.getSeconds()).padStart(2, '0');
+      return `${saat}:${dakika}:${saniye} (${gun}.${ay})`;
     }
 
-    // Varsayılan zamanı şimdiki zaman olarak ayarla
     window.addEventListener("DOMContentLoaded", () => {
       birimDoldur("dusmanBirim", "HUN");
       birimDoldur("kendiBirim", "HUN");
@@ -415,22 +442,40 @@
       const kHiz = parseFloat(document.getElementById("kendiBirim").value);
       const savasDate = new Date(savasStr);
 
-      // 1. Düşmanın dönüş süresi hesabı
+      // 1. Düşman dönüş süresi
       let dusmanSure = sureHesapla(dx, dy, sx, sy, dHiz).toplamSaniye;
       if (dusmanTarz === "elmas") dusmanSure = Math.floor(dusmanSure / 2);
-      
       const varisDate = new Date(savasDate.getTime() + dusmanSure * 1000);
 
       // 2. Kendi gidiş süren
       let kendiSure = sureHesapla(kx, ky, dx, dy, kHiz).toplamSaniye;
       if (kendiTarz === "elmas") kendiSure = Math.floor(kendiSure / 2);
-
       const cikisDate = new Date(varisDate.getTime() - kendiSure * 1000);
 
-      // Sonuçları bas
-      document.getElementById("resDonus").textContent = `${formatSaat(varisDate)}`;
+      // Zaman aşımı kontrolü (Şu anki zamandan geride mi?)
+      const suAn = new Date();
+      const gecKalindi = cikisDate.getTime() < suAn.getTime();
+
+      const card = document.getElementById("sonucCard");
+      const resCikisEl = document.getElementById("resCikis");
+      const warningBadge = document.getElementById("warningBadge");
+      const cardHeaderTitle = document.getElementById("cardHeaderTitle");
+
+      if (gecKalindi) {
+        card.classList.add("late");
+        resCikisEl.classList.add("late");
+        warningBadge.style.display = "block";
+        cardHeaderTitle.style.color = "var(--danger-color)";
+      } else {
+        card.classList.remove("late");
+        resCikisEl.classList.remove("late");
+        warningBadge.style.display = "none";
+        cardHeaderTitle.style.color = "var(--success-color)";
+      }
+
+      document.getElementById("resDonus").textContent = formatTarihSaat(varisDate);
       document.getElementById("resSure").textContent = formatSure(kendiSure);
-      document.getElementById("resCikis").textContent = `${formatSaat(cikisDate)}`;
+      resCikisEl.textContent = formatTarihSaat(cikisDate);
       
       const kSelect = document.getElementById("kendiBirim");
       const secilenBirimAdi = kSelect.options[kSelect.selectedIndex].text;
@@ -439,23 +484,42 @@
                     `🎯 Hedef: X: ${dx} | Y: ${dy}\n` +
                     `📍 Çıkış: X: ${kx} | Y: ${ky}\n` +
                     `💂 Birim: ${secilenBirimAdi}\n` +
-                    `🕒 İniş / Kilit Saati: ${formatSaat(varisDate)}\n` +
-                    `🚀 Asker Çıkış Saati: ${formatSaat(cikisDate)}`;
+                    `🕒 İniş / Kilit Saati: ${formatTarihSaat(varisDate)}\n` +
+                    `🚀 Asker Çıkış Saati: ${formatTarihSaat(cikisDate)}` +
+                    (gecKalindi ? `\n⚠️ DİKKAT: Çıkış zamanı geçmiştir!` : ``);
 
-      const card = document.getElementById("sonucCard");
       card.style.display = "block";
       card.scrollIntoView({ behavior: 'smooth' });
 
-      // Haptic feedback (Telegram mobil titreşim)
       if (tg && tg.HapticFeedback) {
-        tg.HapticFeedback.notificationOccurred("success");
+        tg.HapticFeedback.notificationOccurred(gecKalindi ? "error" : "success");
       }
     }
 
     function kopyalaFis() {
-      navigator.clipboard.writeText(sonFisMetni).then(() => {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(sonFisMetni).then(() => {
+          alert("Operasyon fişi panoya kopyalandı!");
+        }).catch(() => fallbackKopyala());
+      } else {
+        fallbackKopyala();
+      }
+    }
+
+    function fallbackKopyala() {
+      const textarea = document.createElement("textarea");
+      textarea.value = sonFisMetni;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand("copy");
         alert("Operasyon fişi panoya kopyalandı!");
-      });
+      } catch (err) {
+        alert("Kopyalama başarısız oldu, lütfen manuel kopyalayın.");
+      }
+      document.body.removeChild(textarea);
     }
   </script>
 </body>
